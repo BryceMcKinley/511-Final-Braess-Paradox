@@ -1,162 +1,137 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import heapq
+import networkx as nx
 import random
 
-NUM_CARS = 100
-ALPHA = 0.5
-ITERATIONS = 100
-
-HIGHWAY_SPEED = 1.0
-LOCAL_SPEED = 0.5
-SHORTCUT_SPEED = 0.1
-
+# --- Parameters calibrated for the Paradox ---
+NUM_CARS = 4000 
+ITERATIONS = 60
+LEARNING_RATE = 0.2 
 
 class City:
-    def __init__(self, name):
+    def __init__(self, name, pos):
         self.name = name
+        self.pos = pos
         self.out_roads = []
 
     def connect(self, road):
         self.out_roads.append(road)
 
-
 class Road:
-    def __init__(self, start, end, base_time, road_type="local"):
+    def __init__(self, start, end, road_type):
         self.start = start
         self.end = end
-        self.base_time = base_time
         self.road_type = road_type
         self.cars = 0
-
         start.connect(self)
 
     def travel_time(self):
-        if self.road_type == "constant":
-            return self.base_time
-        return self.base_time + ALPHA * self.cars
+        if self.road_type == "bottleneck":
+            return self.cars / 100
+        elif self.road_type == "highway":
+            return 45
+        elif self.road_type == "shortcut":
+            return 0
+        return 0
 
-
-class Car:
-    def __init__(self, start, goal):
-        self.start = start
-        self.goal = goal
-
-    def choose_road(self):
-        counter = 0
-        pq = []
-        heapq.heappush(pq, (0, counter, self.start, None))
-        visited = {}
-
-        while pq:
-            cost, _, city, first_road = heapq.heappop(pq)
-
-            if city in visited and visited[city] <= cost:
-                continue
-            visited[city] = cost
-
-            if city == self.goal:
-                return first_road
-
-            for road in city.out_roads:
-                next_city = road.end
-                next_cost = cost + road.travel_time()
-
-                if city == self.start:
-                    next_first = road
-                else:
-                    next_first = first_road
-
-                counter += 1
-                heapq.heappush(pq, (next_cost, counter, next_city, next_first))
-
-        return None
-
+    def get_label(self):
+        t = self.travel_time()
+        if self.road_type == "bottleneck":
+            return f"x/100\nTime: {t:.1f}"
+        if self.road_type == "highway":
+            return f"45\nTime: {t:.1f}"
+        return f"0\nTime: {t:.1f}"
 
 class Simulation:
-    def __init__(self):
-        self.setup()
-
-    def setup(self):
-        self.S = City("S")
-        self.A = City("A")
-        self.B = City("B")
-        self.T = City("T")
+    def __init__(self, include_shortcut=True):
+        self.S = City("S", pos=(0, 1))
+        self.A = City("A", pos=(1, 2))
+        self.B = City("B", pos=(1, 0))
+        self.T = City("T", pos=(2, 1))
 
         self.roads = [
-            Road(self.S, self.A, LOCAL_SPEED, "local"),
-            Road(self.S, self.B, HIGHWAY_SPEED, "constant"),
-            Road(self.A, self.T, HIGHWAY_SPEED, "constant"),
-            Road(self.B, self.T, LOCAL_SPEED, "local"),
-            Road(self.A, self.B, SHORTCUT_SPEED, "constant"),
+            Road(self.S, self.A, "bottleneck"),
+            Road(self.S, self.B, "highway"),
+            Road(self.A, self.T, "highway"),
+            Road(self.B, self.T, "bottleneck"),
         ]
+        if include_shortcut:
+            self.roads.append(Road(self.A, self.B, "shortcut"))
+            
+        # Initial state: Randomly assign paths to start
+        self.car_paths = [random.choice(self.get_available_paths()) for _ in range(NUM_CARS)]
+        self.pos = {city.name: city.pos for city in [self.S, self.A, self.B, self.T]}
 
-        self.cars = [Car(self.S, self.T) for _ in range(NUM_CARS)]
-
-    def reset_flows(self):
-        for r in self.roads:
-            r.cars = 0
+    def get_available_paths(self):
+        paths = [
+            [self.roads[0], self.roads[2]], # S-A-T
+            [self.roads[1], self.roads[3]]  # S-B-T
+        ]
+        if len(self.roads) > 4:
+            paths.append([self.roads[0], self.roads[4], self.roads[3]]) # S-A-B-T (The Trap)
+        return paths
 
     def step(self):
-        self.reset_flows()
+        for r in self.roads: r.cars = 0
+        
+        for path in self.car_paths:
+            for road in path:
+                road.cars += 1
+        
+        available_paths = self.get_available_paths()
+        path_times = [sum(r.travel_time() for r in p) for p in available_paths]
+            
+        best_path_idx = np.argmin(path_times)
+        best_path = available_paths[best_path_idx]
+        
+        # Drivers switch paths if a better one is found
+        for i in range(NUM_CARS):
+            if random.random() < LEARNING_RATE:
+                self.car_paths[i] = best_path
+                
+        # Calculate the real average time experienced by all cars
+        total_time = sum(sum(r.travel_time() for r in p) for p in self.car_paths)
+        return total_time / NUM_CARS
 
-        choices = []
-        total_time = 0
+    def draw_network(self, i, avg_time):
+        plt.subplot(1, 2, 1) # Left side: Network
+        plt.cla()
+        G = nx.DiGraph()
+        edge_labels = {}
+        for r in self.roads:
+            G.add_edge(r.start.name, r.end.name)
+            edge_labels[(r.start.name, r.end.name)] = r.get_label()
+        
+        nx.draw(G, self.pos, with_labels=True, node_size=1000, node_color='orange', 
+                font_weight='bold', arrows=True, connectionstyle='arc3, rad = 0.1')
+        nx.draw_networkx_edge_labels(G, self.pos, edge_labels=edge_labels, font_size=15)
+        plt.title(f"Traffic Network (Iter {i})")
 
-        # Each car chooses route
-        for car in self.cars:
-            first_road = car.choose_road()
-            choices.append(first_road)
-            first_road.cars += 1
+# --- Execute ---
+sim = Simulation(include_shortcut=True)
+history = []
 
-        # Estimate travel times after assignment
-        for road in self.roads:
-            total_time += road.travel_time() * road.cars
-
-        avg_time = total_time / NUM_CARS
-
-        return choices, avg_time
-
-
-# =========================
-# RUN EXPERIMENT
-# =========================
-
-sim = Simulation()
-
-avg_times = []
-route_counts = []
+plt.ion()
+fig = plt.figure(figsize=(14, 6))
 
 for i in range(ITERATIONS):
-    choices, avg_time = sim.step()
+    avg_time = sim.step()
+    history.append(avg_time)
+    
+    if i % 1 == 0:
+        sim.draw_network(i, avg_time)
+        
+        # Right side: Equilibrium Graph
+        plt.subplot(1, 2, 2)
+        plt.plot(history, color='red', linewidth=2)
+        plt.title(f"Equilibrium Graph: Avg Time = {avg_time:.2f} min")
+        plt.xlabel("Iteration")
+        plt.ylabel("Avg Travel Time")
+        plt.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.pause(0.01)
 
-    avg_times.append(avg_time)
-
-    # Count usage of each outgoing road from S
-    count_A = sum(1 for r in choices if r.end.name == "A")
-    count_B = sum(1 for r in choices if r.end.name == "B")
-
-    route_counts.append((count_A, count_B))
-
-
-# =========================
-# PLOTTING
-# =========================
-
-route_counts = np.array(route_counts)
-
-plt.figure()
-plt.plot(avg_times)
-plt.title("Average Travel Time per Iteration")
-plt.xlabel("Iteration")
-plt.ylabel("Time")
-
-plt.figure()
-plt.plot(route_counts[:, 0], label="S → A")
-plt.plot(route_counts[:, 1], label="S → B")
-plt.legend()
-plt.title("Route Usage Over Time")
-plt.xlabel("Iteration")
-plt.ylabel("Number of Cars")
-
+plt.ioff()
+print(f"Final Equilibrium Travel Time: {history[-1]:.2f} minutes")
 plt.show()
