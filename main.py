@@ -1,22 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+import heapq
 import random
 
-# =========================
-# CONFIG
-# =========================
-NUM_CARS = 40
-ALPHA = 0.5  # congestion strength
+NUM_CARS = 100
+ALPHA = 0.5
+ITERATIONS = 100
 
-# =========================
-# CLASSES
-# =========================
+HIGHWAY_SPEED = 1.0
+LOCAL_SPEED = 0.5
+SHORTCUT_SPEED = 0.1
+
 
 class City:
-    def __init__(self, name, pos):
+    def __init__(self, name):
         self.name = name
-        self.pos = np.array(pos)
         self.out_roads = []
 
     def connect(self, road):
@@ -24,153 +22,141 @@ class City:
 
 
 class Road:
-    def __init__(self, start, end, road_type="local"):
+    def __init__(self, start, end, base_time, road_type="local"):
         self.start = start
         self.end = end
+        self.base_time = base_time
         self.road_type = road_type
-        self.cars = []
+        self.cars = 0
 
         start.connect(self)
 
     def travel_time(self):
         if self.road_type == "constant":
-            return 1.0
-        else:
-            return 1.0 + ALPHA * len(self.cars)
+            return self.base_time
+        return self.base_time + ALPHA * self.cars
 
 
 class Car:
     def __init__(self, start, goal):
-        self.current_city = start
+        self.start = start
         self.goal = goal
-        self.road = None
-        self.progress = 0.0
 
     def choose_road(self):
-        # Greedy (selfish routing)
-        best_road = None
-        best_cost = float('inf')
+        counter = 0
+        pq = []
+        heapq.heappush(pq, (0, counter, self.start, None))
+        visited = {}
 
-        for road in self.current_city.out_roads:
-            cost = road.travel_time()
+        while pq:
+            cost, _, city, first_road = heapq.heappop(pq)
 
-            # heuristic: distance to goal
-            dist = np.linalg.norm(road.end.pos - self.goal.pos)
+            if city in visited and visited[city] <= cost:
+                continue
+            visited[city] = cost
 
-            total_cost = cost + dist
+            if city == self.goal:
+                return first_road
 
-            if total_cost < best_cost:
-                best_cost = total_cost
-                best_road = road
+            for road in city.out_roads:
+                next_city = road.end
+                next_cost = cost + road.travel_time()
 
-        return best_road
+                if city == self.start:
+                    next_first = road
+                else:
+                    next_first = first_road
 
-    def update(self, dt):
-        if self.road is None:
-            if self.current_city == self.goal:
-                return  # arrived
+                counter += 1
+                heapq.heappush(pq, (next_cost, counter, next_city, next_first))
 
-            self.road = self.choose_road()
-            self.road.cars.append(self)
-            self.progress = 0.0
+        return None
 
-        self.progress += dt / self.road.travel_time()
-
-        if self.progress >= 1.0:
-            self.road.cars.remove(self)
-            self.current_city = self.road.end
-            self.road = None
-            self.progress = 0.0
-
-    def get_position(self):
-        if self.road is None:
-            return self.current_city.pos
-
-        start = self.road.start.pos
-        end = self.road.end.pos
-        return start + self.progress * (end - start)
-
-
-# =========================
-# SIMULATION
-# =========================
 
 class Simulation:
     def __init__(self):
-        self.cities = []
-        self.roads = []
-        self.cars = []
+        self.setup()
 
-    def setup_braess(self):
-        S = City("S", (0, 0.5))
-        A = City("A", (0.5, 1))
-        B = City("B", (0.5, 0))
-        T = City("T", (1, 0.5))
-
-        self.cities = [S, A, B, T]
+    def setup(self):
+        self.S = City("S")
+        self.A = City("A")
+        self.B = City("B")
+        self.T = City("T")
 
         self.roads = [
-            Road(S, A, "local"),      # congested
-            Road(S, B, "constant"),
-            Road(A, T, "constant"),
-            Road(B, T, "local"),      # congested
-            Road(A, B, "constant"),   # shortcut (Braess)
+            Road(self.S, self.A, LOCAL_SPEED, "local"),
+            Road(self.S, self.B, HIGHWAY_SPEED, "constant"),
+            Road(self.A, self.T, HIGHWAY_SPEED, "constant"),
+            Road(self.B, self.T, LOCAL_SPEED, "local"),
+            Road(self.A, self.B, SHORTCUT_SPEED, "constant"),
         ]
 
-        for _ in range(NUM_CARS):
-            self.cars.append(Car(S, T))
+        self.cars = [Car(self.S, self.T) for _ in range(NUM_CARS)]
 
-    def update(self, dt):
+    def reset_flows(self):
+        for r in self.roads:
+            r.cars = 0
+
+    def step(self):
+        self.reset_flows()
+
+        choices = []
+        total_time = 0
+
+        # Each car chooses route
         for car in self.cars:
-            car.update(dt)
+            first_road = car.choose_road()
+            choices.append(first_road)
+            first_road.cars += 1
+
+        # Estimate travel times after assignment
+        for road in self.roads:
+            total_time += road.travel_time() * road.cars
+
+        avg_time = total_time / NUM_CARS
+
+        return choices, avg_time
 
 
 # =========================
-# VISUALIZATION
+# RUN EXPERIMENT
 # =========================
 
 sim = Simulation()
-sim.setup_braess()
 
-fig, ax = plt.subplots()
+avg_times = []
+route_counts = []
 
-def draw_arrow(start, end, road_type):
-    dx, dy = end - start
+for i in range(ITERATIONS):
+    choices, avg_time = sim.step()
 
-    width = 0.01 if road_type == "local" else 0.02
+    avg_times.append(avg_time)
 
-    ax.arrow(start[0], start[1], dx, dy,
-             length_includes_head=True,
-             head_width=0.05,
-             fc='black', ec='black',
-             linewidth=2 if road_type == "constant" else 1,
-             alpha=0.7)
+    # Count usage of each outgoing road from S
+    count_A = sum(1 for r in choices if r.end.name == "A")
+    count_B = sum(1 for r in choices if r.end.name == "B")
 
-def draw():
-    ax.clear()
-
-    # Draw roads with arrows
-    for road in sim.roads:
-        draw_arrow(road.start.pos, road.end.pos, road.road_type)
-
-    # Draw cities
-    for city in sim.cities:
-        ax.scatter(*city.pos, s=100)
-        ax.text(city.pos[0], city.pos[1] + 0.05, city.name, ha='center')
-
-    # Draw cars
-    for car in sim.cars:
-        pos = car.get_position()
-        ax.scatter(*pos, c='red', s=15)
-
-    ax.set_xlim(-0.2, 1.2)
-    ax.set_ylim(-0.2, 1.2)
-    ax.set_aspect('equal')
+    route_counts.append((count_A, count_B))
 
 
-def update(frame):
-    sim.update(dt=0.05)
-    draw()
+# =========================
+# PLOTTING
+# =========================
 
-ani = FuncAnimation(fig, update, frames=300, interval=50)
+route_counts = np.array(route_counts)
+
+plt.figure()
+plt.plot(avg_times)
+plt.title("Average Travel Time per Iteration")
+plt.xlabel("Iteration")
+plt.ylabel("Time")
+
+plt.figure()
+plt.plot(route_counts[:, 0], label="S → A")
+plt.plot(route_counts[:, 1], label="S → B")
+plt.legend()
+plt.title("Route Usage Over Time")
+plt.xlabel("Iteration")
+plt.ylabel("Number of Cars")
+
 plt.show()
