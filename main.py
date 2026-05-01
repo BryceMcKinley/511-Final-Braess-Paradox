@@ -6,7 +6,7 @@ import random
 # --- Parameters calibrated for the Paradox ---
 NUM_CARS = 4000 
 ITERATIONS = 60
-LEARNING_RATE = 0.2 
+LEARNING_RATE = 0.1
 
 class City:
     def __init__(self, name, pos):
@@ -36,11 +36,12 @@ class Road:
 
     def get_label(self):
         t = self.travel_time()
+        # Add a line for the current car count (x)
         if self.road_type == "bottleneck":
-            return f"x/100\nTime: {t:.1f}"
+            return f"f(x)=x/100\nCars (x): {self.cars}\nTime: {t:.1f}"
         if self.road_type == "highway":
-            return f"45\nTime: {t:.1f}"
-        return f"0\nTime: {t:.1f}"
+            return f"f(x)=45\nCars: {self.cars}\nTime: {t:.1f}"
+        return f"Shortcut\nCars: {self.cars}\nTime: {t:.1f}"
 
 class Simulation:
     def __init__(self, include_shortcut=True):
@@ -104,19 +105,26 @@ class Simulation:
         
         nx.draw(G, self.pos, with_labels=True, node_size=1000, node_color='orange', 
                 font_weight='bold', arrows=True, connectionstyle='arc3, rad = 0.1')
-        nx.draw_networkx_edge_labels(G, self.pos, edge_labels=edge_labels, font_size=15)
+        nx.draw_networkx_edge_labels(
+                G, sim.pos, ax=ax1, 
+                edge_labels=edge_labels, 
+                font_size=20,           # Slightly larger for readability
+                font_weight='bold',
+                label_pos=0.5,)  
         plt.title(f"Traffic Network (Iter {i})")
 
 # --- Execute ---
-sim = Simulation(include_shortcut=True)
+sim = Simulation(include_shortcut=False)
 history = []
 
 plt.ion()
-fig = plt.figure(figsize=(14, 6))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(22, 11), dpi=90)
+plt.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.1, wspace=0.3)
 
 for i in range(ITERATIONS):
     avg_time = sim.step()
     history.append(avg_time)
+    
     
     if i % 1 == 0:
         sim.draw_network(i, avg_time)
@@ -124,6 +132,7 @@ for i in range(ITERATIONS):
         # Right side: Equilibrium Graph
         plt.subplot(1, 2, 2)
         plt.plot(history, color='red', linewidth=2)
+        plt.ylim(60, 100)
         plt.title(f"Equilibrium Graph: Avg Time = {avg_time:.2f} min")
         plt.xlabel("Iteration")
         plt.ylabel("Avg Travel Time")
