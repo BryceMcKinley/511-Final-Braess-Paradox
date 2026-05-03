@@ -63,6 +63,9 @@ class Simulation:
         self.car_paths = [random.choice(self.get_available_paths()) for _ in range(NUM_CARS)]
         self.pos = {city.name: city.pos for city in [self.S, self.A, self.B, self.T]}
 
+        # Remember original time
+        self.init_car_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
+
     def get_available_paths(self):
         paths = [
             [self.roads[0], self.roads[2]], # S-A-T
@@ -72,7 +75,7 @@ class Simulation:
             paths.append([self.roads[0], self.roads[4], self.roads[3]]) # S-A-B-T (The Trap)
         return paths
 
-    def step(self, info=False, avg=True):
+    def step(self, info=False, avg=False, rndm=True):
         """
         if info:
             SAT = 45 + xa/100
@@ -103,12 +106,11 @@ class Simulation:
         '''
         attempting to make a code that will only switch cars if it helps the global average. 
         Not working rn as we are losing cars. Not sure what is wrong
-
+        
         if avg:
             temp_car_paths = copy.deepcopy(self.car_paths)
             for i in range(NUM_CARS):
                 if random.random() < LEARNING_RATE:
-                    hold = temp_car_paths[i]
                     temp_car_paths[i] = best_path
             temp_avg = sum(sum(r.travel_time() for r in p) for p in temp_car_paths) / NUM_CARS
             last_avg = sum(sum(r.travel_time() for r in p) for p in self.car_paths) / NUM_CARS
@@ -117,13 +119,18 @@ class Simulation:
                 self.car_paths = temp_car_paths
                 print('better')
             else:
-                print(temp_car_paths[i]==hold)
-                temp_car_paths[i] = hold
+                temp_car_paths = self.car_paths
         else:
-        '''
+            '''
         for i in range(NUM_CARS):
             if random.random() < LEARNING_RATE:
                 self.car_paths[i] = best_path
+
+        if rndm:
+            temp_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
+            for i in range(NUM_CARS):
+                if temp_speeds[i] > self.init_car_speeds[i]:
+                    self.car_paths[i] = random.choice(self.get_available_paths())
                 
         # Calculate the real average time experienced by all cars
         total_time = sum(sum(r.travel_time() for r in p) for p in self.car_paths)
@@ -160,8 +167,8 @@ cars_sbt = []
 cars_sabt = []
 
 plt.ion()
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(22, 11), dpi=90)
-plt.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.1, wspace=0.3)
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 8), dpi=90)
+plt.subplots_adjust(left=0.05, right=0.5, top=0.5, bottom=0.1, wspace=0.3)
 
 for i in range(ITERATIONS):
     avg_time = sim.step()
@@ -169,6 +176,7 @@ for i in range(ITERATIONS):
     cars_sat.append(sim.roads[2].cars)
     cars_sbt.append(sim.roads[1].cars)
     cars_sabt.append(sim.roads[0].cars - sim.roads[2].cars)
+    cars_all = cars_sat[i] + cars_sbt[i] + cars_sabt[i]
     
     if i % 1 == 0:
         sim.draw_network(i, avg_time)
@@ -176,7 +184,7 @@ for i in range(ITERATIONS):
         # Right top: Equilibrium Graph
         plt.subplot(2, 2, 2)
         plt.plot(history, color='red', linewidth=2)
-        plt.ylim(60, 100)
+        plt.ylim(60, 90)
         plt.title(f"Equilibrium Graph: Avg Time = {avg_time:.2f} min")
         plt.xlabel("Iteration")
         plt.ylabel("Avg Travel Time")
@@ -188,7 +196,7 @@ for i in range(ITERATIONS):
         plt.plot(cars_sbt, color='green', linewidth=2)
         plt.plot(cars_sabt, color='blue', linewidth=2)
         plt.ylim(0, 4000)
-        plt.title(f"Number of Cars Per Path Graph: Total Cars = {NUM_CARS} min")
+        plt.title(f"Number of Cars Per Path Graph: Total Cars = {cars_all}")
         plt.xlabel("Iteration")
         plt.ylabel("Number of Cars Per Path")
         plt.grid(True, alpha=0.3)
