@@ -7,7 +7,6 @@ import copy
 # --- Parameters calibrated for the Paradox ---
 NUM_CARS = 4000 
 ITERATIONS = 60
-# LEARNING_RATE = 0.2
 
 class City:
     def __init__(self, name, pos):
@@ -45,6 +44,8 @@ class Road:
 
 class Simulation:
     def __init__(self, include_shortcut=True):
+        self.LEARNING_RATE = 0.2
+        
         self.S = City("S", pos=(0, 1))
         self.A = City("A", pos=(1, 2))
         self.B = City("B", pos=(1, 0))
@@ -62,9 +63,6 @@ class Simulation:
         # Initial state: Randomly assign paths to start
         self.car_paths = [random.choice(self.get_available_paths()) for _ in range(NUM_CARS)]
         self.pos = {city.name: city.pos for city in [self.S, self.A, self.B, self.T]}
-
-        # Remember original time
-        self.init_car_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
 
     def get_available_paths(self):
         paths = [
@@ -97,48 +95,29 @@ class Simulation:
         # Calculating Learning Rate
         car_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
         std = np.std(car_speeds)
-        if std > 2:
-            LEARNING_RATE = 0.2
-        else:
-            LEARNING_RATE = std * 0.1
-
-        # Drivers switch paths if a better one is found
-        '''
-        attempting to make a code that will only switch cars if it helps the global average. 
-        Not working rn as we are losing cars. Not sure what is wrong
-        
-        if avg:
-            temp_car_paths = copy.deepcopy(self.car_paths)
-            for i in range(NUM_CARS):
-                if random.random() < LEARNING_RATE:
-                    temp_car_paths[i] = best_path
-            temp_avg = sum(sum(r.travel_time() for r in p) for p in temp_car_paths) / NUM_CARS
-            last_avg = sum(sum(r.travel_time() for r in p) for p in self.car_paths) / NUM_CARS
-            print('temp: ', temp_avg, 'last: ', last_avg)
-            if temp_avg < last_avg:
-                self.car_paths = temp_car_paths
-                print('better')
-            else:
-                temp_car_paths = self.car_paths
-        else:
-            '''
+        if std * 0.1 < self.LEARNING_RATE:
+            self.LEARNING_RATE = std * 0.1
+            
         for i in range(NUM_CARS):
-            if random.random() < LEARNING_RATE:
+            if random.random() < self.LEARNING_RATE:
                 self.car_paths[i] = best_path
 
+        # If a car's time is worse than its initial time, it choses a path at random
+        if it == 0:
+            self.it_car_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
         if rndm:
+            count = 0
             temp_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
             for i in range(NUM_CARS):
-                if temp_speeds[i] > self.init_car_speeds[i]:
-                    self.car_paths[i] = random.choice(self.get_available_paths())
+                if temp_speeds[i] > self.it_car_speeds[i]:
+                    available = [x for x in self.get_available_paths() if x != self.car_paths[i]]
+                    self.car_paths[i] = random.choice(available)
+                    count += 1
+            print(count)
                 
         # Calculate the real average time experienced by all cars
         total_time = sum(sum(r.travel_time() for r in p) for p in self.car_paths)
         return total_time / NUM_CARS
-
-    #the plots are coming back a bit funky cuz I split the right side into two graphs.
-    #this has caused a fantom graph to appear under it with tick mark values.
-    #wasn't able to find a quick fix, idk if you know one.
     
     def draw_network(self, i, avg_time):
         plt.subplot(1, 2, 1) # Left side: Network
@@ -169,8 +148,10 @@ cars_sabt = []
 plt.ion()
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 8), dpi=90)
 plt.subplots_adjust(left=0.05, right=0.5, top=0.5, bottom=0.1, wspace=0.3)
+ax2.axis('off')
 
 for i in range(ITERATIONS):
+    it = i
     avg_time = sim.step()
     history.append(avg_time)
     cars_sat.append(sim.roads[2].cars)
@@ -192,14 +173,17 @@ for i in range(ITERATIONS):
         
         #Right bottom: Number of Cars per Path Graph
         plt.subplot(2, 2, 4)
-        plt.plot(cars_sat, color='red', linewidth=2)
-        plt.plot(cars_sbt, color='green', linewidth=2)
-        plt.plot(cars_sabt, color='blue', linewidth=2)
+        plt.plot(cars_sat, color='red', linewidth=2, label='S-A-T')
+        plt.plot(cars_sbt, color='green', linewidth=2, label='S-B-T')
+        plt.plot(cars_sabt, color='blue', linewidth=2, label='S-A-B-T')
         plt.ylim(0, 4000)
         plt.title(f"Number of Cars Per Path Graph: Total Cars = {cars_all}")
         plt.xlabel("Iteration")
         plt.ylabel("Number of Cars Per Path")
         plt.grid(True, alpha=0.3)
+        handles, labels = plt.gca().get_legend_handles_labels()
+        plt.legend(handles[:3], labels[:3])
+
         
         plt.tight_layout()
         plt.pause(0.01)
