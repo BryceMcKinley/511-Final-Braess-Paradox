@@ -73,7 +73,7 @@ class Simulation:
             paths.append([self.roads[0], self.roads[4], self.roads[3]]) # S-A-B-T (The Trap)
         return paths
 
-    def step(self, info=False, avg=False, rndm=True):
+    def step(self, info=False, avg=False, rndm=False):
         """
         if info:
             SAT = 45 + xa/100
@@ -97,7 +97,7 @@ class Simulation:
         std = np.std(car_speeds)
         if std * 0.1 < self.LEARNING_RATE:
             self.LEARNING_RATE = std * 0.1
-            
+
         for i in range(NUM_CARS):
             if random.random() < self.LEARNING_RATE:
                 self.car_paths[i] = best_path
@@ -106,14 +106,11 @@ class Simulation:
         if it == 0:
             self.it_car_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
         if rndm:
-            count = 0
             temp_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
             for i in range(NUM_CARS):
                 if temp_speeds[i] > self.it_car_speeds[i]:
                     available = [x for x in self.get_available_paths() if x != self.car_paths[i]]
                     self.car_paths[i] = random.choice(available)
-                    count += 1
-            print(count)
                 
         # Calculate the real average time experienced by all cars
         total_time = sum(sum(r.travel_time() for r in p) for p in self.car_paths)
@@ -139,7 +136,7 @@ class Simulation:
         plt.title(f"Traffic Network (Iter {i})")
 
 # --- Execute ---
-sim = Simulation(include_shortcut=True)
+sim = Simulation(include_shortcut=False)
 history = []
 cars_sat = []
 cars_sbt = []
@@ -171,7 +168,7 @@ for i in range(ITERATIONS):
         plt.ylabel("Avg Travel Time")
         plt.grid(True, alpha=0.3)
         
-        #Right bottom: Number of Cars per Path Graph
+        # Right bottom: Number of Cars per Path Graph
         plt.subplot(2, 2, 4)
         plt.plot(cars_sat, color='red', linewidth=2, label='S-A-T')
         plt.plot(cars_sbt, color='green', linewidth=2, label='S-B-T')
