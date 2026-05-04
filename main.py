@@ -7,6 +7,7 @@ import copy
 # --- Parameters calibrated for the Paradox ---
 NUM_CARS = 4000 
 ITERATIONS = 60
+SWITCH_PROB = 1
 
 class City:
     def __init__(self, name, pos):
@@ -73,18 +74,16 @@ class Simulation:
             paths.append([self.roads[0], self.roads[4], self.roads[3]]) # S-A-B-T (The Trap)
         return paths
 
-    def step(self, info=False, avg=False, rndm=False):
-        """
-        if info:
-            SAT = 45 + xa/100
-            SBT = 45 + xb/100
-            SABT = (xa + xb)/100"""
+    def step(self, rndm=False):
         
         for r in self.roads: r.cars = 0
         
         for path in self.car_paths:
             for road in path:
                 road.cars += 1
+
+        # Calculate the real average time experienced by all cars
+        total_time = sum(sum(r.travel_time() for r in p) for p in self.car_paths)
         
         available_paths = self.get_available_paths()
         path_times = [sum(r.travel_time() for r in p) for p in available_paths]
@@ -109,11 +108,10 @@ class Simulation:
             temp_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
             for i in range(NUM_CARS):
                 if temp_speeds[i] > self.it_car_speeds[i]:
-                    available = [x for x in self.get_available_paths() if x != self.car_paths[i]]
-                    self.car_paths[i] = random.choice(available)
+                    if random.random() < SWITCH_PROB:
+                        available = [x for x in self.get_available_paths() if x != self.car_paths[i]]
+                        self.car_paths[i] = random.choice(available)
                 
-        # Calculate the real average time experienced by all cars
-        total_time = sum(sum(r.travel_time() for r in p) for p in self.car_paths)
         return total_time / NUM_CARS
     
     def draw_network(self, i, avg_time):
