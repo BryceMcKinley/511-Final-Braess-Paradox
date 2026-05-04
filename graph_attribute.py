@@ -19,7 +19,7 @@ def analyze_parameter_impact(parameter_name, values):
             sim_param.RNDM_SWITCH_PROB = val
             sim_param.RNDM_SWITCH = True
         elif parameter_name == 'learning': 
-            sim_param.learning_rate = val
+            sim_param.LEARNING_RATE_OVERRIDE = val
         else:
             raise ValueError(f"Unknown parameter: {parameter_name}")
 
@@ -43,6 +43,7 @@ def analyze_parameter_impact(parameter_name, values):
     plt.show()
 
 # Example usage:
-analyze_parameter_impact('toll', [0, 5, 10, 15, 20, 25, 30])
-# analyze_parameter_impact('RNDM_SWITCH_PROB', [0, 0.01, 0.05, 0.1, 0.2, 0.5, 1.0])
-# analyze_parameter_impact('learning', [0.1, 0.2, 0.3, 0.4, 0.5])6)  # Adjust y-axis limits based 
+# analyze_parameter_impact('toll', [0, 5, 10, 15, 20, 25, 30])
+# analyze_parameter_impact('RNDM_SWITCH_PROB', [0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+# analyze_parameter_impact('altruism', [0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5,])
+analyze_parameter_impact('learning', [0, 0.1, 0.2, 0.3, 0.4, 0.5])

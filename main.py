@@ -4,7 +4,8 @@ import simulate as sim_mod
 # --- Execute ---
 
 simulate_params = sim_mod.SimulationParams()
-simulate_params.RNDM_SWITCH = True
+simulate_params.TOLL_VALUE = 45  # Cars see traffic as it was 3 steps ago
+simulate_params.LEARNING_RATE_OVERRIDE = 0.5 # High reaction to the old data
 
 
 sim = sim_mod.Simulation(params=simulate_params)
@@ -45,6 +46,9 @@ for i in range(simulate_params.ITERATIONS):
     plt.ylim(0, sim.params.NUM_CARS)
     plt.ylabel("Number of Cars")
     plt.legend(loc='upper right')
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
     plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
