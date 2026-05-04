@@ -7,6 +7,12 @@ import copy
 # --- Parameters calibrated for the Paradox ---
 NUM_CARS = 4000 
 ITERATIONS = 60
+ALTRUISTIC_PERCENTAGE = 0.005
+
+INCLUDE_SHORTCUT = True
+RNDM_SWITCH = False
+
+DELETE_SHORTCUT_HALF_WAY = True
 
 class City:
     def __init__(self, name, pos):
@@ -32,6 +38,8 @@ class Road:
             return 45
         elif self.road_type == "shortcut":
             return 0
+        elif self.road_type == "broken":
+            return 200 # High penalty value
         return 0
 
     def get_label(self):
@@ -44,7 +52,8 @@ class Road:
 
 class Simulation:
     def __init__(self, include_shortcut=True):
-        self.LEARNING_RATE = 0.2
+        self.learning_rate = 0.2
+        self.step_count = 1
         
         self.S = City("S", pos=(0, 1))
         self.A = City("A", pos=(1, 2))
@@ -73,7 +82,7 @@ class Simulation:
             paths.append([self.roads[0], self.roads[4], self.roads[3]]) # S-A-B-T (The Trap)
         return paths
 
-    def step(self, info=False, avg=False, rndm=True):
+    def step(self, info=False, avg=False, rndm=RNDM_SWITCH):
         """
         if info:
             SAT = 45 + xa/100
@@ -95,25 +104,30 @@ class Simulation:
         # Calculating Learning Rate
         car_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
         std = np.std(car_speeds)
-        if std * 0.1 < self.LEARNING_RATE:
-            self.LEARNING_RATE = std * 0.1
-            
-        for i in range(NUM_CARS):
-            if random.random() < self.LEARNING_RATE:
-                self.car_paths[i] = best_path
+        if std * 0.1 < self.learning_rate:
+            self.learning_rate = std * 0.1 - (self.step_count/ITERATIONS) * 0.0001
+        self.step_count += 1
+        print(f"Learning Rate: {self.learning_rate:.4f} | Std Dev of Car Speeds: {std:.2f}")
 
-        # If a car's time is worse than its initial time, it choses a path at random
         if it == 0:
             self.it_car_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
-        if rndm:
-            count = 0
-            temp_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
-            for i in range(NUM_CARS):
+        temp_speeds = [sum(r.travel_time() for r in p) for p in self.car_paths]
+
+        for i in range(NUM_CARS):
+            if random.random() < self.learning_rate:
+                self.car_paths[i] = best_path
+            if rndm:
+                # Introduce a "Frustration Probability"
+                # Only a small % of cars that are over their initial time will actually switch
                 if temp_speeds[i] > self.it_car_speeds[i]:
-                    available = [x for x in self.get_available_paths() if x != self.car_paths[i]]
-                    self.car_paths[i] = random.choice(available)
-                    count += 1
-            print(count)
+                    if random.random() < 0.05:  # Only 5% of frustrated cars switch per iteration
+                        available = [x for x in self.get_available_paths() if x != self.car_paths[i]]
+                        self.car_paths[i] = random.choice(available)
+            if random.random() < ALTRUISTIC_PERCENTAGE:
+                # These cars avoid the 'Trap' (S-A-B-T) because they "know" it ruins the average
+                self.car_paths[i] = random.choice([available_paths[0], available_paths[1]])
+            
+            
                 
         # Calculate the real average time experienced by all cars
         total_time = sum(sum(r.travel_time() for r in p) for p in self.car_paths)
@@ -136,10 +150,10 @@ class Simulation:
                 font_size=20,           # Slightly larger for readability
                 font_weight='bold',
                 label_pos=0.5,)
-        plt.title(f"Traffic Network (Iter {i})")
+        plt.title(f"Traffic Network (Iter {i})")    
 
 # --- Execute ---
-sim = Simulation(include_shortcut=True)
+sim = Simulation(include_shortcut=INCLUDE_SHORTCUT)
 history = []
 cars_sat = []
 cars_sbt = []
@@ -151,6 +165,9 @@ plt.subplots_adjust(left=0.05, right=0.5, top=0.5, bottom=0.1, wspace=0.3)
 ax2.axis('off')
 
 for i in range(ITERATIONS):
+    if DELETE_SHORTCUT_HALF_WAY and i == ITERATIONS // 2:
+        if len(sim.roads) > 4:
+            sim.roads[4].road_type = "broken"
     it = i
     avg_time = sim.step()
     history.append(avg_time)
